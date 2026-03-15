@@ -15,7 +15,7 @@ def require_env(name):
         return value
 
 
-def main():
+def run_once():
         pv.debug()
 
         serial_target = os.getenv("SERIAL_PORT", "COM6")
@@ -95,6 +95,21 @@ def main():
                 return 1
         finally:
                 port.close()
+
+
+def main():
+        interval_seconds = int(os.getenv("RUN_EVERY_SECONDS", "0"))
+        if interval_seconds <= 0:
+                return run_once()
+
+        print("Running continuously every %d seconds" % interval_seconds)
+        while True:
+                started = time.time()
+                run_once()
+                elapsed = time.time() - started
+                sleep_for = max(0.0, interval_seconds - elapsed)
+                if sleep_for:
+                        time.sleep(sleep_for)
 
 
 if __name__ == "__main__":
