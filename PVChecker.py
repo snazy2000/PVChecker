@@ -19,11 +19,19 @@ def run_once():
         pv.debug()
 
         serial_target = os.getenv("SERIAL_PORT", "COM6")
-        pvoutput_api_key = require_env("PVOUTPUT_API_KEY")
-        pvoutput_system_id = int(require_env("PVOUTPUT_SYSTEM_ID"))
-        home_assistant_url = require_env("HOME_ASSISTANT_URL").rstrip("/")
-        home_assistant_token = require_env("HOME_ASSISTANT_TOKEN")
-        home_assistant_entity_id = os.getenv("HOME_ASSISTANT_ENTITY_ID", "sensor.solar_energy")
+
+                # Feature flags
+                disable_pvoutput = os.getenv("DISABLE_PVOUTPUT", "0") == "1"
+                disable_homeassistant = os.getenv("DISABLE_HOMEASSISTANT", "0") == "1"
+
+                # Only require env vars if not disabled
+                if not disable_pvoutput:
+                        pvoutput_api_key = require_env("PVOUTPUT_API_KEY")
+                        pvoutput_system_id = int(require_env("PVOUTPUT_SYSTEM_ID"))
+                if not disable_homeassistant:
+                        home_assistant_url = require_env("HOME_ASSISTANT_URL").rstrip("/")
+                        home_assistant_token = require_env("HOME_ASSISTANT_TOKEN")
+                home_assistant_entity_id = os.getenv("HOME_ASSISTANT_ENTITY_ID", "sensor.solar_energy")
 
         port = serial.serial_for_url(serial_target, timeout=10, write_timeout=5)
         try:
@@ -54,42 +62,58 @@ def run_once():
                 for field in status:
                         print("%-10s: %s" % field)
 
-                print("Sending to PVOutput")
-                conn = pvoutput.Connection(pvoutput_api_key, pvoutput_system_id)
+                                print("Preparing data for PVOutput and Home Assistant")
+                                status = dict(status)
+                                energy_today_wh = int(status["E-Today"] * 1000)
+                                print("Energy today (Wh):", energy_today_wh)
 
-                status = dict(status)
-                energy_today_wh = int(status["E-Today"] * 1000)
-                print(energy_today_wh)
-                conn.add_status(
-                        time.strftime("%Y%m%d"),
-                        time.strftime("%H:%M"),
-                        energy_exp=energy_today_wh,
-                        power_exp=status["Pac"],
-                        cumulative=True,
-                )
-                print(conn.get_status())
+                                # PVOutput
+                                pvoutput_payload = {
+                                        "date": time.strftime("%Y%m%d"),
+                                        "time": time.strftime("%H:%M"),
+                                        "energy_exp": energy_today_wh,
+                                        "power_exp": status["Pac"],
+                                        "cumulative": True,
+                                }
+                                if disable_pvoutput:
+                                        print("[DRY RUN] Would send to PVOutput:", pvoutput_payload)
+                                else:
+                                        print("Sending to PVOutput")
+                                        conn = pvoutput.Connection(pvoutput_api_key, pvoutput_system_id)
+                                        conn.add_status(
+                                                pvoutput_payload["date"],
+                                                pvoutput_payload["time"],
+                                                energy_exp=pvoutput_payload["energy_exp"],
+                                                power_exp=pvoutput_payload["power_exp"],
+                                                cumulative=pvoutput_payload["cumulative"],
+                                        )
+                                        print(conn.get_status())
 
-                payload = {
-                        "state": str(energy_today_wh),
-                        "attributes": {
-                                "unit_of_measurement": "Wh",
-                                "device_class": "energy",
-                                "state_class": "total_increasing",
-                                "friendly_name": "Solar Energy",
-                        },
-                }
-                headers = {
-                        "Authorization": "Bearer " + home_assistant_token,
-                }
-                response = requests.post(
-                        home_assistant_url + "/api/states/" + home_assistant_entity_id,
-                        json=payload,
-                        headers=headers,
-                        timeout=20,
-                )
-                print(response.text)
-                response.raise_for_status()
-                return 0
+                                # Home Assistant
+                                ha_payload = {
+                                        "state": str(energy_today_wh),
+                                        "attributes": {
+                                                "unit_of_measurement": "Wh",
+                                                "device_class": "energy",
+                                                "state_class": "total_increasing",
+                                                "friendly_name": "Solar Energy",
+                                        },
+                                }
+                                if disable_homeassistant:
+                                        print(f"[DRY RUN] Would send to Home Assistant entity '{home_assistant_entity_id}':", ha_payload)
+                                else:
+                                        headers = {
+                                                "Authorization": "Bearer " + home_assistant_token,
+                                        }
+                                        response = requests.post(
+                                                home_assistant_url + "/api/states/" + home_assistant_entity_id,
+                                                json=ha_payload,
+                                                headers=headers,
+                                                timeout=20,
+                                        )
+                                        print(response.text)
+                                        response.raise_for_status()
+                                return 0
         except Exception as inst:
                 print("Serial connection or upload failed on %s: %s" % (serial_target, inst))
                 return 1
@@ -105,7 +129,13 @@ def main():
         print("Running continuously every %d seconds" % interval_seconds)
         while True:
                 started = time.time()
-                run_once()
+                try:
+                        run_once()
+                except Exception as inst:
+                        print("[ERROR] Unhandled exception in main loop: %s" % inst)
+                        # Optionally, print stack trace for debugging
+                        import traceback
+                        traceback.print_exc()
                 elapsed = time.time() - started
                 sleep_for = max(0.0, interval_seconds - elapsed)
                 if sleep_for:
