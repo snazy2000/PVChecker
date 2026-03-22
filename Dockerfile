@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY PVChecker.py /app/PVChecker.py
 COPY pv /app/pv
 
-CMD ["python", "PVChecker.py"]
+CMD ["python", "-u","PVChecker.py"]
