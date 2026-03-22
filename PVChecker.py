@@ -20,18 +20,18 @@ def run_once():
 
         serial_target = os.getenv("SERIAL_PORT", "COM6")
 
-                # Feature flags
-                disable_pvoutput = os.getenv("DISABLE_PVOUTPUT", "0") == "1"
-                disable_homeassistant = os.getenv("DISABLE_HOMEASSISTANT", "0") == "1"
+        # Feature flags
+        disable_pvoutput = os.getenv("DISABLE_PVOUTPUT", "0") == "1"
+        disable_homeassistant = os.getenv("DISABLE_HOMEASSISTANT", "0") == "1"
 
-                # Only require env vars if not disabled
-                if not disable_pvoutput:
-                        pvoutput_api_key = require_env("PVOUTPUT_API_KEY")
-                        pvoutput_system_id = int(require_env("PVOUTPUT_SYSTEM_ID"))
-                if not disable_homeassistant:
-                        home_assistant_url = require_env("HOME_ASSISTANT_URL").rstrip("/")
-                        home_assistant_token = require_env("HOME_ASSISTANT_TOKEN")
-                home_assistant_entity_id = os.getenv("HOME_ASSISTANT_ENTITY_ID", "sensor.solar_energy")
+        # Only require env vars if not disabled
+        if not disable_pvoutput:
+                pvoutput_api_key = require_env("PVOUTPUT_API_KEY")
+                pvoutput_system_id = int(require_env("PVOUTPUT_SYSTEM_ID"))
+        if not disable_homeassistant:
+                home_assistant_url = require_env("HOME_ASSISTANT_URL").rstrip("/")
+                home_assistant_token = require_env("HOME_ASSISTANT_TOKEN")
+        home_assistant_entity_id = os.getenv("HOME_ASSISTANT_ENTITY_ID", "sensor.solar_energy")
 
         port = serial.serial_for_url(serial_target, timeout=10, write_timeout=5)
         try:
